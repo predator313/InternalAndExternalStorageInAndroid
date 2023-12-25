@@ -1,5 +1,6 @@
 package com.aamirashraf.storageinandroid.adapter
 
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.constraintlayout.widget.ConstraintSet
@@ -11,8 +12,10 @@ import com.aamirashraf.storageinandroid.model.InternalStoragePhoto
 
 class InternalStoragePhotoAdapter(
     private val onPhotoClick: (InternalStoragePhoto) -> Unit
+
 ) : ListAdapter<InternalStoragePhoto, InternalStoragePhotoAdapter.PhotoViewHolder>(Companion) {
     inner class PhotoViewHolder(val binding: RvItemsBinding): RecyclerView.ViewHolder(binding.root)
+    private var onPhotoClick2:((InternalStoragePhoto)->Unit)?=null
 
     companion object : DiffUtil.ItemCallback<InternalStoragePhoto>() {
         override fun areItemsTheSame(oldItem: InternalStoragePhoto, newItem: InternalStoragePhoto): Boolean {
@@ -50,6 +53,19 @@ class InternalStoragePhotoAdapter(
                 onPhotoClick(photo)
                 true
             }
+            ivPhoto.setOnClickListener {
+//                onPhotoClick2?.let {
+//                    it(photo)
+//                    Log.d("hello","clicked")
+//                }
+//                onPhotoClick2?.invoke(photo)
+                onPhotoClick(photo)
+
+            }
         }
+    }
+    fun setCallback(callback:(InternalStoragePhoto)->Unit){
+        onPhotoClick2=callback
+
     }
 }

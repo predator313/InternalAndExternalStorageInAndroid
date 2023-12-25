@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
@@ -25,22 +26,42 @@ class MainActivity : AppCompatActivity() {
     private lateinit var internalStoragePhotoAdapter: InternalStoragePhotoAdapter
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding=ActivityMainBinding.inflate(layoutInflater)
+        binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        internalStoragePhotoAdapter= InternalStoragePhotoAdapter {
+        internalStoragePhotoAdapter = InternalStoragePhotoAdapter {
+            val isDeletionSuccessful = deletePhotoFromInternalStorage(it.name)
+            if (isDeletionSuccessful) {
+
+                loadPhotoFromInternalStorageIntoRecyclerView()
+                Toast.makeText(this@MainActivity, "Deleted Successfully", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "Photo not Deleted", Toast.LENGTH_SHORT).show()
+            }
 
         }
+//        internalStoragePhotoAdapter.setCallback {
+//            val isDeletionSuccessful=deletePhotoFromInternalStorage(it.name)
+//            Log.d("hello",isDeletionSuccessful.toString())
+//            if (isDeletionSuccessful) {
+//
+//                loadPhotoFromInternalStorageIntoRecyclerView()
+//                Toast.makeText(this@MainActivity, "Deleted Successfully", Toast.LENGTH_SHORT).show()
+//            } else {
+//                Toast.makeText(this@MainActivity, "Photo not Deleted", Toast.LENGTH_SHORT).show()
+//            }
+//        }
         //takePhoto is contract
-        val takePhoto=registerForActivityResult(ActivityResultContracts.TakePicturePreview()){
-            val isPrivate=binding.switchPrivate.isChecked
-            if(isPrivate){
-                val isSavedSuccessfully=savePhotoToInternalStorage(UUID.randomUUID().toString(),it!!)
-                if(isSavedSuccessfully){
+        val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) {
+            val isPrivate = binding.switchPrivate.isChecked
+            if (isPrivate) {
+                val isSavedSuccessfully =
+                    savePhotoToInternalStorage(UUID.randomUUID().toString(), it!!)
+                if (isSavedSuccessfully) {
                     loadPhotoFromInternalStorageIntoRecyclerView()
-                    Toast.makeText(this@MainActivity,"Saved Successfully",Toast.LENGTH_SHORT).show()
-                }
-                else{
-                    Toast.makeText(this@MainActivity,"Photo not saved",Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Saved Successfully", Toast.LENGTH_SHORT)
+                        .show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Photo not saved", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -57,57 +78,61 @@ class MainActivity : AppCompatActivity() {
 
 
     }
-    private fun savePhotoToInternalStorage(fileName:String,bmp:Bitmap):Boolean{
+
+    private fun savePhotoToInternalStorage(fileName: String, bmp: Bitmap): Boolean {
         //data related operation should be done in the try and catch block
         return try {
-            openFileOutput("$fileName.jpg", MODE_PRIVATE).use {stream->
+            openFileOutput("$fileName.jpg", MODE_PRIVATE).use { stream ->
                 //MODE_PRIVATE means the file created here is only access by this application
-                if(!bmp.compress(Bitmap.CompressFormat.JPEG,96,stream)){
+                if (!bmp.compress(Bitmap.CompressFormat.JPEG, 96, stream)) {
                     throw IOException("can't abe to save bitmap")
                 }
                 return true
             }
 
-        }catch (e:IOException){
+        } catch (e: IOException) {
             e.printStackTrace()
-             false
+            false
         }
     }
-    private suspend fun loadPhotoFromInternalStorage():List<InternalStoragePhoto>{
+
+    private suspend fun loadPhotoFromInternalStorage(): List<InternalStoragePhoto> {
         //here we loads all photo from internal storage so better to use the
         //suspend function and make all all inside the coroutines async
-        return withContext(Dispatchers.IO){
+        return withContext(Dispatchers.IO) {
             //means withContext we switch from main thread to the background thread
-            val allFiles=filesDir.listFiles()
+            val allFiles = filesDir.listFiles()
             allFiles?.filter { it.canRead() && it.isFile && it.name.endsWith(".jpg") }
                 ?.map {
-                    val bytes=it.readBytes()
-                    val bmp=BitmapFactory.decodeByteArray(bytes,0,bytes.size)
-                    InternalStoragePhoto(it.name,bmp)
-                }?: listOf()  ///if null return empty list
+                    val bytes = it.readBytes()
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    InternalStoragePhoto(it.name, bmp)
+                } ?: listOf()  ///if null return empty list
         }
     }
-    private fun deletePhotoFromInternalStorage(fileName:String):Boolean{
+
+    private fun deletePhotoFromInternalStorage(fileName: String): Boolean {
         return try {
             deleteFile(fileName)  //this is the inbuilt function used to delete file
 
-        }
-        catch (e:Exception){
+        } catch (e: Exception) {
             e.printStackTrace()
             false
         }
 
     }
-    private fun loadPhotoFromInternalStorageIntoRecyclerView(){
+
+    private fun loadPhotoFromInternalStorageIntoRecyclerView() {
         lifecycleScope.launch {
             //means that this coroutines is only active as it parent(activity/fragment)
-            val allPhoto=loadPhotoFromInternalStorage()
+            val allPhoto = loadPhotoFromInternalStorage()
             internalStoragePhotoAdapter.submitList(allPhoto)
 
         }
 
     }
-    private fun setUpRecyclerViewInternalStorage()=binding.rvPrivatePhotos.apply {
+
+    private fun setUpRecyclerViewInternalStorage() = binding.rvPrivatePhotos.apply {
         adapter = internalStoragePhotoAdapter
         layoutManager = StaggeredGridLayoutManager(3, RecyclerView.VERTICAL)
     }
