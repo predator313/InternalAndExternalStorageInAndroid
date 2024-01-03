@@ -2,12 +2,14 @@ package com.aamirashraf.storageinandroid
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.RecoverableSecurityException
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -15,6 +17,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
 import androidx.annotation.RequiresApi
@@ -41,11 +44,13 @@ class MainActivity : AppCompatActivity() {
     private var readPermissionGranted:Boolean=false
     private var writePermissionGranted:Boolean=false
     private var readImageTiramisu:Boolean=true
+    private var deletedImageUri: Uri? = null
 
     //need to fix the permission for android 13
 
     //now we use the launcher for permission launcher
     private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var intentSenderLauncher: ActivityResultLauncher<IntentSenderRequest>
 
     //kind of live data for external storage
     private lateinit var contentObserver: ContentObserver
@@ -69,7 +74,10 @@ class MainActivity : AppCompatActivity() {
 
         }
         externalStoragePhotoAdapter=SharedStoragePhotoAdapter {
-
+            lifecycleScope.launch {
+                deletePhotoFromExternalStorage(it.contentUri)
+                deletedImageUri=it.contentUri
+            }
         }
         setUpRecyclerViewExternalStorage()
         initContentObserver()
@@ -92,6 +100,23 @@ class MainActivity : AppCompatActivity() {
 
         }
         updateAndRequestPermission()
+        intentSenderLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
+            if(it.resultCode == RESULT_OK) {
+                //this is the hack to deal with the api level 29 only
+                //because in 29 if we delete the image and we give the permission
+                //it will not going to delete
+                //but in next long click it will delete
+                if(Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+                    lifecycleScope.launch {
+                        deletePhotoFromExternalStorage(deletedImageUri ?: return@launch)
+                    }
+                }
+                Toast.makeText(this@MainActivity, "Photo deleted successfully", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this@MainActivity, "Photo couldn't be deleted", Toast.LENGTH_SHORT).show()
+            }
+        }
+
 
         //since janitri phone is android 13 we need to request some
         //more permission regarding android tiramisu
@@ -220,6 +245,34 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val allPhoto=loadPhotoFromExternalStorage()
             externalStoragePhotoAdapter.submitList(allPhoto)
+        }
+    }
+    private suspend fun deletePhotoFromExternalStorage(photoUri:Uri){
+        withContext(Dispatchers.IO){
+            try {
+                contentResolver.delete(photoUri,null,null)
+            }catch (e:SecurityException){
+                val intentSender=when{
+                    Build.VERSION.SDK_INT>=Build.VERSION_CODES.R->{
+                        //this is for api level 30
+                        MediaStore.createDeleteRequest(contentResolver, listOf(photoUri)).intentSender
+                    }
+                    Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q->{
+                        //we are at api level 29
+                        val recoverableSecurityException=e as? RecoverableSecurityException
+                        recoverableSecurityException?.userAction?.actionIntent?.intentSender
+
+                    }
+                    else ->null
+                }
+                intentSender?.let {sender->
+                    //this can initialize the dialog
+                    //by which the user can allowed the permission or denied it
+                    intentSenderLauncher.launch(
+                        IntentSenderRequest.Builder(sender).build()
+                    )
+                }
+            }
         }
     }
     private suspend fun loadPhotoFromExternalStorage():List<SharedStoragePhoto>{
